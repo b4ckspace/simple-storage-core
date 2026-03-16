@@ -1,0 +1,145 @@
+<p align="center">
+  <img src="assets/lager-mc.svg" alt="Lager MC" width="160">
+</p>
+
+# Lagerverwaltung
+
+Terminalbasierte Lagerverwaltung fuer kleine bis mittlere Teilelager mit Shopify-Anbindung, Lagerplatzlogik, Picklisten, Lieferscheinen, Inventur und Labeldruck.
+
+Lizenz: [MIT](/home/chrisi/Lagerverwaltung/LICENSE)
+
+## Funktionen
+
+- Artikel suchen, bearbeiten und lokal anlegen
+- Lagerplaetze nach `Regal / Fach / Platz` pflegen
+- Bestellungen aus Shopify synchronisieren
+- Zahlungs- und Fulfillment-Status im Auftragsfenster anzeigen
+- Picklisten per CUPS drucken
+- Lieferscheine als PDF erzeugen oder per CUPS drucken
+- Brother-QL-Etiketten drucken
+- Inventur starten, zaehlen, exportieren und uebernehmen
+- extern gelagerte Fulfillment-Artikel ausblenden
+
+## Projektstruktur
+
+- [lager_mc.py](/home/chrisi/Lagerverwaltung/lager_mc.py)
+  Hauptanwendung fuer Lager, Bestellungen und Inventur.
+- [label_print.py](/home/chrisi/Lagerverwaltung/label_print.py)
+  Etikettendruck fuer Brother-QL-Drucker.
+- [delivery_note.py](/home/chrisi/Lagerverwaltung/delivery_note.py)
+  PDF-Erzeugung fuer Lieferscheine auf Basis der Vorlage.
+- [app_settings.py](/home/chrisi/Lagerverwaltung/app_settings.py)
+  Laedt Projekt-Defaults und lokale Overrides.
+- [settings.json](/home/chrisi/Lagerverwaltung/settings.json)
+  Versionierte Standardkonfiguration des Projekts.
+- [shpoify-sync/shopify_sync.py](/home/chrisi/Lagerverwaltung/shpoify-sync/shopify_sync.py)
+  Separater Shopify-Sync fuer Produkte, Bestand und Bestellungen.
+
+## Voraussetzungen
+
+- Python 3.11+
+- PostgreSQL
+- `curses`
+- fuer Labeldruck: `Pillow`, `python-barcode`, `brother_ql`
+- fuer Listen-/Lieferschein-Druck: CUPS bzw. `lp`
+
+Die Anwendung erweitert benoetigte Datenbankspalten und legt die Tabellen fuer Bestellungen und Inventur bei Bedarf selbst an.
+
+## Konfiguration
+
+Es gibt zwei Ebenen:
+
+- [settings.json](/home/chrisi/Lagerverwaltung/settings.json)
+  versionierte Projekt-Defaults
+- `settings.local.json`
+  lokale, nicht versionierte Laufzeitwerte
+
+`lager_mc.py` schreibt Benutzeraenderungen aus `F8` nur noch in `settings.local.json`. Dadurch bleibt `settings.json` als saubere Projektvorlage im Git, waehrend lokale Werte kuenftig nicht mehr im Arbeitsbaum auftauchen.
+
+Wichtige Einstellungen:
+
+- `db_host`, `db_name`, `db_user`, `db_pass`
+- `printer_uri`, `printer_model`, `label_size`
+- `picklist_printer`
+- `delivery_note_printer`
+- `pdf_output_dir`
+- `delivery_note_sender_name`
+- `delivery_note_sender_street`
+- `delivery_note_sender_city`
+- `delivery_note_sender_email`
+
+## Shopify-Sync
+
+Der Sync laeuft getrennt von der TUI und kann direkt oder im Container gestartet werden.
+
+Mindestens benoetigte Shopify-Scopes:
+
+- `read_products`
+- `read_inventory`
+- `write_inventory`
+- `read_locations`
+- `read_orders`
+
+Zusaetzlich:
+
+- `read_all_orders`
+  falls Bestellungen aelter als 60 Tage geladen werden sollen
+
+Der Sync schreibt unter anderem:
+
+- Bestellungen und Positionen
+- Fulfillment-Status
+- Zahlungsstatus
+
+## Installation
+
+```bash
+git clone <repo-url>
+cd Lagerverwaltung
+python3 -m py_compile lager_mc.py
+python3 lager_mc.py
+```
+
+Falls Pakete fehlen:
+
+```bash
+pip install psycopg2-binary pillow python-barcode brother_ql requests python-dotenv
+```
+
+## Druck
+
+### Labeldruck
+
+Etiketten werden ueber [label_print.py](/home/chrisi/Lagerverwaltung/label_print.py) erzeugt. Unterstuetzt werden Brother-QL-Netzwerkdrucker.
+
+### Picklisten
+
+Picklisten werden textbasiert ueber den in den Einstellungen hinterlegten CUPS-Drucker gesendet.
+
+### Lieferscheine
+
+Lieferscheine basieren auf [Lieferschein_Vorlage.pdf](/home/chrisi/Lagerverwaltung/Lieferschein_Vorlage.pdf) und unterstuetzen:
+
+- PDF-Export
+- getrennten CUPS-Drucker
+- mehrseitige Ausgabe
+- Seitennummerierung
+
+## Logging
+
+Rotierende Logdateien liegen unter [logs](/home/chrisi/Lagerverwaltung/logs):
+
+- [logs/lagerverwaltung.log](/home/chrisi/Lagerverwaltung/logs/lagerverwaltung.log)
+- [logs/druck.log](/home/chrisi/Lagerverwaltung/logs/druck.log)
+
+Beispiel:
+
+```bash
+export LAGERVERWALTUNG_LOG_LEVEL=DEBUG
+```
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests -v
+```
