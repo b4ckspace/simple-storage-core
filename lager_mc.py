@@ -2090,7 +2090,7 @@ def orders_dialog(stdscr):
             detail_lines.append("")
             qty_width, sku_width, regal_width, fach_width, platz_width, title_width = format_order_item_header(right_width - 2)
             detail_lines.append(
-                f"{_fit('Menge', qty_width)} {_fit('SKU', sku_width)} {_fit('Artikel', title_width)} {_fit('Reg', regal_width)} {_fit('Fac', fach_width)} {_fit('Pl', platz_width)}"
+                f"{_fit('Menge', qty_width)} {_fit('SKU', sku_width)} {_fit('Artikel', title_width)} {_fit('Regal', regal_width)} {_fit('Fach', fach_width)} {_fit('Platz', platz_width)}"
             )
             detail_lines.append("-" * max(1, right_width - 2))
 
