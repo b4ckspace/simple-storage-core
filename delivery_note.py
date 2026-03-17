@@ -6,9 +6,9 @@ import zlib
 from pathlib import Path
 
 
-TEMPLATE_PATH = Path(__file__).resolve().parent / "Lieferschein_Vorlage.pdf"
 MAX_DELIVERY_NOTE_ITEMS = 10
 MEDIA_BOX = "[0.000 0.000 595.280 841.890]"
+LOCAL_TEMPLATE_PATH = Path(__file__).resolve().parent / "local_only" / "delivery_note_template.pdf"
 
 DEFAULT_SENDER = {
     "name": "Firmenname",
@@ -43,7 +43,7 @@ def format_delivery_address_lines(order):
 
 
 def build_delivery_note_pdf(template_path, output_path, order, order_items, sender=None):
-    template_bytes = Path(template_path).read_bytes()
+    template_bytes = _load_template_bytes(template_path)
     objects = _parse_pdf_objects(template_bytes)
     rows = build_delivery_note_rows(order_items)
     regular_font_obj_id = max(objects) + 1
@@ -100,9 +100,6 @@ def build_delivery_note_content_stream(order, rows, page_number=1, page_count=1,
     commands = [
         "1.000 1.000 1.000 rg",
         "60.000 75.000 490.280 732.874 re f",
-        "q",
-        "150.000 0 0 43.500 60.000 764.374 cm /I2 Do",
-        "Q",
         "0.129 0.169 0.212 rg",
         _text_cmd(441.652, 778.669, "F4", 15.8, "Lieferschein"),
         _text_cmd(416.426, 750.808, "F4", 10.5, f"Bestellung: {order_name}"),
@@ -131,8 +128,6 @@ def build_delivery_note_content_stream(order, rows, page_number=1, page_count=1,
             "0.75 w 0 J [  ] 0 d",
             "60.000 566.087 m 132.535 566.087 l S",
             "Q",
-            "/GS1 gs",
-            "/GS2 gs",
             "0.129 0.169 0.212 rg",
             _text_cmd(65.000, 574.151, "F4", 10.5, "Position"),
             "q",
@@ -141,8 +136,6 @@ def build_delivery_note_content_stream(order, rows, page_number=1, page_count=1,
             "0.75 w 0 J [  ] 0 d",
             "132.535 566.087 m 487.975 566.087 l S",
             "Q",
-            "/GS1 gs",
-            "/GS2 gs",
             "0.129 0.169 0.212 rg",
             _text_cmd(137.535, 574.151, "F4", 10.5, "Artikel"),
             "q",
@@ -151,8 +144,6 @@ def build_delivery_note_content_stream(order, rows, page_number=1, page_count=1,
             "0.75 w 0 J [  ] 0 d",
             "487.975 566.087 m 550.280 566.087 l S",
             "Q",
-            "/GS1 gs",
-            "/GS2 gs",
             "0.129 0.169 0.212 rg",
             _text_cmd(505.401, 574.151, "F4", 10.5, "Anzahl"),
         ]
@@ -211,6 +202,34 @@ def _extract_page_resources(pages_object_body):
     resources_start = pages_object_body.index(b"/Resources <<")
     media_box_start = pages_object_body.index(b"/MediaBox", resources_start)
     return pages_object_body[resources_start:media_box_start].rstrip()
+
+
+def _load_template_bytes(template_path):
+    if template_path:
+        return Path(template_path).read_bytes()
+    if LOCAL_TEMPLATE_PATH.exists():
+        return LOCAL_TEMPLATE_PATH.read_bytes()
+    return _build_fallback_template_pdf()
+
+
+def _build_fallback_template_pdf():
+    objects = {
+        1: b"<< /Type /Catalog\n/Pages 3 0 R\n>>",
+        2: b"<< /Type /Outlines\n/Count 0\n>>",
+        3: (
+            b"<< /Type /Pages\n"
+            b"/Kids [6 0 R]\n"
+            b"/Count 1\n"
+            b"/Resources << /Font << >> >>\n"
+            + f"/MediaBox {MEDIA_BOX}\n".encode("ascii")
+            + b">>"
+        ),
+        4: b"<<>>",
+        5: b"<<>>",
+        6: _build_page_object(7),
+        7: _build_stream_object(""),
+    }
+    return _assemble_pdf(objects)
 
 
 def _augment_resources_with_builtin_fonts(resources_body, regular_font_obj_id, bold_font_obj_id):

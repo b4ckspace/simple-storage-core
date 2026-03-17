@@ -10,5 +10,6 @@ lagerverwaltung.log
 logs/
 settings.local.json
 lieferschein_*.pdf
+delivery_note_template.pdf
 local_only/
 webspace/
