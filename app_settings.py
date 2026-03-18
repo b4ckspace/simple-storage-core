@@ -11,6 +11,7 @@ DEFAULT_SETTINGS = {
     "db_name": "lagerdb",
     "db_user": "lager",
     "db_pass": "",
+    "core_mode": True,
     "language": "de",
     "color_theme": "blue",
     "color_theme_file": "",

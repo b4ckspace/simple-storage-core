@@ -105,6 +105,7 @@ class AppSettingsTests(unittest.TestCase):
             self.assertEqual(loaded["color_theme_file"], app_settings.DEFAULT_SETTINGS["color_theme_file"])
             self.assertEqual(loaded["label_font_regular"], app_settings.DEFAULT_SETTINGS["label_font_regular"])
             self.assertEqual(loaded["label_font_condensed"], app_settings.DEFAULT_SETTINGS["label_font_condensed"])
+            self.assertEqual(loaded["core_mode"], app_settings.DEFAULT_SETTINGS["core_mode"])
 
             self.assertFalse(local_settings_path.exists())
 
@@ -271,7 +272,7 @@ class LagerMcLogicTests(unittest.TestCase):
 
             self.assertTrue(path.startswith(tmpdir))
 
-    def test_build_item_info_lines_includes_shopify_fields(self):
+    def test_build_item_info_lines_hides_shopify_fields_in_core_mode(self):
         item = {
             "sku": "A-1",
             "name": "Alpha",
@@ -292,6 +293,30 @@ class LagerMcLogicTests(unittest.TestCase):
         lines = self.lager_mc.build_item_info_lines(item)
 
         self.assertIn("Barcode/GTIN: 4012345678901", lines)
+        self.assertNotIn("EK Kosten: 6.20 EUR", lines)
+        self.assertNotIn("Gewicht: 380 g", lines)
+
+    def test_build_item_info_lines_includes_shopify_fields_outside_core_mode(self):
+        item = {
+            "sku": "A-1",
+            "name": "Alpha",
+            "barcode": "4012345678901",
+            "shopify_product_status": "active",
+            "shopify_price": "12.95",
+            "shopify_compare_at_price": "14.95",
+            "shopify_unit_cost": "6.20",
+            "shopify_unit_cost_currency": "EUR",
+            "shopify_weight_grams": 380,
+            "sync_status": "ok",
+            "regal": "A",
+            "fach": "1",
+            "platz": "3",
+            "shopify_description": "Beschreibung",
+        }
+
+        with mock.patch.dict(self.lager_mc.SETTINGS, {"core_mode": False}, clear=False):
+            lines = self.lager_mc.build_item_info_lines(item)
+
         self.assertIn("EK Kosten: 6.20 EUR", lines)
         self.assertIn("Gewicht: 380 g", lines)
 

@@ -1,5 +1,6 @@
 {
   "db_host": "192.168.168.69",
+  "core_mode": true,
   "db_name": "lagerdb",
   "db_pass": "lagerpass",
   "db_user": "lager",

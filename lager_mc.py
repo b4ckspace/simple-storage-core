@@ -148,6 +148,8 @@ TRANSLATIONS = {
         "filter_prefix": " Filter: {value} ",
         "status_primary": " Tab Fokus  F1 Sortieren  F2 Lokal  F3 Ohne  F4 Info  F5 Neu  F6 Platz  F7 Menge  F8 Label  F9 Reset  F10 Ende  F11 Mehr  F12 Auftraege ",
         "status_secondary": " Shift+F1 Inventur  Shift+F5 Bearb.  Shift+F8 Multi-Label  Shift+F11 Einst.  F11 Standard  F12 Auftraege  F10 Ende ",
+        "status_primary_core": " Tab Fokus  F1 Sortieren  F2 Lokal  F3 Ohne  F4 Info  F5 Neu  F6 Platz  F7 Menge  F8 Label  F9 Reset  F10 Ende  F11 Mehr ",
+        "status_secondary_core": " Shift+F1 Inventur  Shift+F5 Bearb.  Shift+F8 Multi-Label  Shift+F11 Einst.  F11 Standard  F10 Ende ",
         "no_locations": "Keine Lagerplaetze",
         "locations_panel": "Regale",
         "items_panel": "Artikel",
@@ -224,6 +226,8 @@ TRANSLATIONS = {
         "filter_prefix": " Filter: {value} ",
         "status_primary": " Tab Focus  F1 Sort  F2 Local  F3 Missing  F4 Info  F5 New  F6 Location  F7 Qty  F8 Label  F9 Reset  F10 Exit  F11 More  F12 Orders ",
         "status_secondary": " Shift+F1 Stocktake  Shift+F5 Edit  Shift+F8 Multi-Label  Shift+F11 Settings  F11 Standard  F12 Orders  F10 Exit ",
+        "status_primary_core": " Tab Focus  F1 Sort  F2 Local  F3 Missing  F4 Info  F5 New  F6 Location  F7 Qty  F8 Label  F9 Reset  F10 Exit  F11 More ",
+        "status_secondary_core": " Shift+F1 Stocktake  Shift+F5 Edit  Shift+F8 Multi-Label  Shift+F11 Settings  F11 Standard  F10 Exit ",
         "no_locations": "No storage locations",
         "locations_panel": "Locations",
         "items_panel": "Items",
@@ -320,6 +324,13 @@ def get_active_theme_name():
     if theme_name not in themes:
         return "blue"
     return theme_name
+
+
+def is_core_mode():
+    raw = SETTINGS.get("core_mode", DEFAULT_SETTINGS.get("core_mode", False))
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def get_theme_file_candidates():
@@ -1062,13 +1073,15 @@ def build_item_info_lines(item):
     lines.append(f"SKU: {item.get('sku') or '-'}")
     lines.append(f"Name: {item.get('name') or '-'}")
     lines.append(f"Barcode/GTIN: {item.get('barcode') or '-'}")
-    lines.append(f"Shopify Status: {item.get('shopify_product_status') or '-'}")
-    lines.append(f"VK Preis: {_format_eur(item.get('shopify_price'))}")
-    lines.append(f"VK Vergleich: {_format_eur(item.get('shopify_compare_at_price'))}")
-    lines.append(f"EK Kosten: {_format_eur(item.get('shopify_unit_cost'))}")
+    if not is_core_mode():
+        lines.append(f"Shopify Status: {item.get('shopify_product_status') or '-'}")
+        lines.append(f"VK Preis: {_format_eur(item.get('shopify_price'))}")
+        lines.append(f"VK Vergleich: {_format_eur(item.get('shopify_compare_at_price'))}")
+        lines.append(f"EK Kosten: {_format_eur(item.get('shopify_unit_cost'))}")
 
     weight_grams = item.get("shopify_weight_grams")
-    lines.append(f"Gewicht: {weight_grams} g" if weight_grams is not None else "Gewicht: -")
+    if not is_core_mode():
+        lines.append(f"Gewicht: {weight_grams} g" if weight_grams is not None else "Gewicht: -")
     lines.append(f"Sync: {item.get('sync_status') or '-'}")
     lines.append(f"Lagerplatz: {(item.get('regal') or '-')}/{(item.get('fach') or '-')}/{(item.get('platz') or '-')}")
     return lines
@@ -1319,9 +1332,9 @@ def draw(stdscr, items, left_selected, left_top_index, location_rows, right_sele
     stdscr.attrset(curses.color_pair(3))
 
     if show_secondary_help:
-        status = t("status_secondary")
+        status = t("status_secondary_core" if is_core_mode() else "status_secondary")
     else:
-        status = t("status_primary")
+        status = t("status_primary_core" if is_core_mode() else "status_primary")
     focus = t("focus_items") if active_pane == "left" else t("focus_locations")
     if external_mode == "only":
         focus = focus[:-1] + t("view_external")
@@ -3388,7 +3401,7 @@ def main(stdscr):
         elif key == curses.KEY_F11:
             show_secondary_help = not show_secondary_help
 
-        elif key == curses.KEY_F12:
+        elif key == curses.KEY_F12 and not is_core_mode():
             orders_dialog(stdscr)
 
         elif key in (curses.KEY_BACKSPACE, 127, 8, '\x7f', '\b'):
