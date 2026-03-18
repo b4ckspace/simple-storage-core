@@ -59,6 +59,8 @@ Es gibt zwei Ebenen:
 Wichtige Einstellungen:
 
 - `db_host`, `db_name`, `db_user`, `db_pass`
+- `db_backend` (`sqlite` oder `postgres`)
+- `sqlite_path` (Dateipfad bei SQLite)
 - `language` (`de` oder `en`)
 - `color_theme` (`blue`, `green`, `mono`, `megatrends`, `smoth`, `norton`, `gold-standard`, `subtile`, `monokai`)
 - `color_theme_file` (optional, Pfad zu eigener JSON-Datei mit Themes)

@@ -11,6 +11,8 @@ DEFAULT_SETTINGS = {
     "db_name": "lagerdb",
     "db_user": "lager",
     "db_pass": "",
+    "db_backend": "sqlite",
+    "sqlite_path": "./data/simple-storage-core.db",
     "core_mode": True,
     "language": "de",
     "color_theme": "blue",

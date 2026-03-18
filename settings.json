@@ -1,9 +1,11 @@
 {
   "db_host": "192.168.168.69",
   "core_mode": true,
+  "db_backend": "sqlite",
   "db_name": "lagerdb",
   "db_pass": "lagerpass",
   "db_user": "lager",
+  "sqlite_path": "./data/simple-storage-core.db",
   "delivery_note_printer": "",
   "delivery_note_logo_source": "",
   "delivery_note_template_path": "",

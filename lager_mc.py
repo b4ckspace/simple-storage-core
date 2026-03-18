@@ -5,8 +5,6 @@ import datetime
 import html
 import json
 import os
-import psycopg2
-import psycopg2.extras
 import locale
 import re
 import subprocess
@@ -19,6 +17,7 @@ from urllib.parse import urlparse
 from app_logging import MAIN_LOG_PATH, PRINT_LOG_PATH, get_logger
 from app_settings import DEFAULT_SETTINGS, load_settings, save_settings
 from delivery_note import build_delivery_note_pdf, build_delivery_note_rows
+from storage_db import create_db_connection, get_db_backend_name
 
 locale.setlocale(locale.LC_ALL, "")
 
@@ -168,11 +167,14 @@ TRANSLATIONS = {
         "settings_footer_select": "Enter weiter/Auswahl  ↑↓ wechseln  F2 Speichern  F3 Drucker  F9 Abbrechen",
         "pick_language": "Sprache waehlen",
         "pick_theme": "Farbthema waehlen",
+        "pick_db_backend": "DB Backend waehlen",
         "pick_cancel": "F9 Zurueck",
         "field_db_host": "DB Host",
         "field_db_name": "DB Name",
         "field_db_user": "DB User",
         "field_db_pass": "DB Passwort",
+        "field_db_backend": "DB Backend",
+        "field_sqlite_path": "SQLite Datei",
         "field_language": "Sprache",
         "field_theme": "Farbthema",
         "field_theme_file": "Theme Datei",
@@ -246,11 +248,14 @@ TRANSLATIONS = {
         "settings_footer_select": "Enter next/select  ↑↓ move  F2 Save  F3 Printer  F9 Cancel",
         "pick_language": "Select language",
         "pick_theme": "Select color theme",
+        "pick_db_backend": "Select DB backend",
         "pick_cancel": "F9 Back",
         "field_db_host": "DB Host",
         "field_db_name": "DB Name",
         "field_db_user": "DB User",
         "field_db_pass": "DB Password",
+        "field_db_backend": "DB Backend",
+        "field_sqlite_path": "SQLite File",
         "field_language": "Language",
         "field_theme": "Color Theme",
         "field_theme_file": "Theme File",
@@ -464,6 +469,9 @@ def _resolve_pair_colors(fg_name, bg_name, fallback_fg, fallback_bg):
 
 
 def init_db():
+    if get_db_backend_name(SETTINGS) == "sqlite":
+        return init_db_sqlite()
+
     con = db()
     cur = con.cursor()
     cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS available integer")
@@ -565,28 +573,124 @@ def init_db():
     con.close()
 
 
+def init_db_sqlite():
+    con = db()
+    cur = con.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS items (
+            sku TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            regal TEXT,
+            fach TEXT,
+            platz TEXT,
+            menge INTEGER NOT NULL DEFAULT 0,
+            available INTEGER,
+            reserved INTEGER NOT NULL DEFAULT 0,
+            committed INTEGER NOT NULL DEFAULT 0,
+            unavailable INTEGER NOT NULL DEFAULT 0,
+            dirty INTEGER NOT NULL DEFAULT 0,
+            shopify_variant_id TEXT,
+            barcode TEXT,
+            shopify_product_status TEXT,
+            shopify_description TEXT,
+            shopify_price TEXT,
+            shopify_compare_at_price TEXT,
+            shopify_unit_cost TEXT,
+            shopify_unit_cost_currency TEXT,
+            shopify_weight_grams INTEGER,
+            sync_status TEXT NOT NULL DEFAULT 'local',
+            external_fulfillment INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS shopify_orders (
+            order_id TEXT PRIMARY KEY,
+            order_name TEXT NOT NULL,
+            created_at TEXT,
+            shipping_name TEXT,
+            shipping_address1 TEXT,
+            shipping_zip TEXT,
+            shipping_city TEXT,
+            shipping_country TEXT,
+            fulfillment_status TEXT,
+            payment_status TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS shopify_order_items (
+            order_id TEXT NOT NULL,
+            line_index INTEGER NOT NULL,
+            sku TEXT,
+            title TEXT NOT NULL,
+            quantity INTEGER NOT NULL,
+            PRIMARY KEY (order_id, line_index)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_sessions (
+            session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_name TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'active'
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_lines (
+            session_id INTEGER NOT NULL,
+            line_no INTEGER NOT NULL,
+            sku TEXT NOT NULL,
+            name TEXT NOT NULL,
+            regal TEXT,
+            fach TEXT,
+            platz TEXT,
+            soll_menge INTEGER NOT NULL,
+            ist_menge INTEGER,
+            PRIMARY KEY (session_id, line_no)
+        )
+        """
+    )
+    cur.execute("UPDATE items SET reserved = COALESCE(reserved, 0)")
+    cur.execute("UPDATE items SET committed = COALESCE(committed, 0)")
+    cur.execute("UPDATE items SET unavailable = COALESCE(unavailable, COALESCE(reserved, 0))")
+    cur.execute(
+        """
+        UPDATE items
+        SET available = CASE
+            WHEN available IS NULL THEN
+                MAX(menge - COALESCE(unavailable, 0) - COALESCE(committed, 0), 0)
+            ELSE available
+        END
+        """
+    )
+    con.commit()
+    cur.close()
+    con.close()
+
+
 
 def db():
-    return psycopg2.connect(
-        host=SETTINGS["db_host"],
-        dbname=SETTINGS["db_name"],
-        user=SETTINGS["db_user"],
-        password=SETTINGS["db_pass"],
-        cursor_factory=psycopg2.extras.RealDictCursor
-    )
+    return create_db_connection(SETTINGS, dict_rows=True)
 
 
 def test_db_connection(settings):
-    con = psycopg2.connect(
-        host=settings["db_host"],
-        dbname=settings["db_name"],
-        user=settings["db_user"],
-        password=settings["db_pass"],
-    )
+    con = create_db_connection(settings, dict_rows=False)
     con.close()
 
 
 def _is_default_db_settings(settings):
+    if get_db_backend_name(settings) == "sqlite":
+        return False
     for key in ("db_host", "db_name", "db_user", "db_pass"):
         if settings.get(key) != DEFAULT_SETTINGS.get(key):
             return False
@@ -781,15 +885,32 @@ def create_inventory_session():
     cur = con.cursor()
     cur.execute("UPDATE inventory_sessions SET status = 'archived' WHERE status = 'active'")
     session_name = f"Inventur {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
-    cur.execute(
-        """
-        INSERT INTO inventory_sessions (session_name)
-        VALUES (%s)
-        RETURNING session_id, session_name, created_at, status
-        """,
-        (session_name,),
-    )
-    session = cur.fetchone()
+    if get_db_backend_name(SETTINGS) == "sqlite":
+        cur.execute(
+            """
+            INSERT INTO inventory_sessions (session_name, status)
+            VALUES (%s, 'active')
+            """,
+            (session_name,),
+        )
+        cur.execute(
+            """
+            SELECT session_id, session_name, created_at, status
+            FROM inventory_sessions
+            WHERE session_id = (SELECT MAX(session_id) FROM inventory_sessions)
+            """
+        )
+        session = cur.fetchone()
+    else:
+        cur.execute(
+            """
+            INSERT INTO inventory_sessions (session_name)
+            VALUES (%s)
+            RETURNING session_id, session_name, created_at, status
+            """,
+            (session_name,),
+        )
+        session = cur.fetchone()
     cur.execute(
         """
         SELECT
@@ -890,23 +1011,50 @@ def set_inventory_count(session_id, line_no, qty):
 def apply_inventory_session(session_id):
     con = db()
     cur = con.cursor()
-    cur.execute(
-        """
-        UPDATE items i
-        SET menge = l.ist_menge,
-            available = GREATEST(
-                l.ist_menge - COALESCE(i.unavailable, COALESCE(i.reserved, 0)) - COALESCE(i.committed, 0),
-                0
-            ),
-            dirty = TRUE,
-            updated_at = NOW()
-        FROM inventory_lines l
-        WHERE l.session_id = %s
-          AND l.ist_menge IS NOT NULL
-          AND i.sku = l.sku
-        """,
-        (session_id,),
-    )
+    if get_db_backend_name(SETTINGS) == "sqlite":
+        cur.execute(
+            """
+            SELECT sku, ist_menge
+            FROM inventory_lines
+            WHERE session_id = %s
+              AND ist_menge IS NOT NULL
+            """,
+            (session_id,),
+        )
+        rows = cur.fetchall()
+        for row in rows:
+            cur.execute(
+                """
+                UPDATE items
+                SET menge = %s,
+                    available = MAX(
+                        %s - COALESCE(unavailable, COALESCE(reserved, 0)) - COALESCE(committed, 0),
+                        0
+                    ),
+                    dirty = 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE sku = %s
+                """,
+                (row["ist_menge"], row["ist_menge"], row["sku"]),
+            )
+    else:
+        cur.execute(
+            """
+            UPDATE items i
+            SET menge = l.ist_menge,
+                available = GREATEST(
+                    l.ist_menge - COALESCE(i.unavailable, COALESCE(i.reserved, 0)) - COALESCE(i.committed, 0),
+                    0
+                ),
+                dirty = TRUE,
+                updated_at = NOW()
+            FROM inventory_lines l
+            WHERE l.session_id = %s
+              AND l.ist_menge IS NOT NULL
+              AND i.sku = l.sku
+            """,
+            (session_id,),
+        )
     cur.execute(
         """
         UPDATE inventory_sessions
@@ -1809,6 +1957,13 @@ def get_theme_options():
     return options
 
 
+def get_db_backend_options():
+    return [
+        {"value": "sqlite", "label": "SQLite"},
+        {"value": "postgres", "label": "PostgreSQL"},
+    ]
+
+
 def choice_dialog(stdscr, title, options, current_value):
     selected = 0
     for index, option in enumerate(options):
@@ -1875,6 +2030,8 @@ def settings_dialog(stdscr):
         "db_name": SETTINGS["db_name"],
         "db_user": SETTINGS["db_user"],
         "db_pass": SETTINGS["db_pass"],
+        "db_backend": (SETTINGS.get("db_backend") or DEFAULT_SETTINGS.get("db_backend", "sqlite")).strip().lower(),
+        "sqlite_path": SETTINGS.get("sqlite_path", DEFAULT_SETTINGS.get("sqlite_path", "./data/simple-storage-core.db")),
         "language": (SETTINGS.get("language") or DEFAULT_SETTINGS["language"]).strip().lower(),
         "color_theme": (SETTINGS.get("color_theme") or DEFAULT_SETTINGS["color_theme"]).strip().lower(),
         "color_theme_file": SETTINGS.get("color_theme_file", ""),
@@ -1907,6 +2064,8 @@ def settings_dialog(stdscr):
                 {"name": "db_name", "label": t("field_db_name"), "value": values["db_name"]},
                 {"name": "db_user", "label": t("field_db_user"), "value": values["db_user"]},
                 {"name": "db_pass", "label": t("field_db_pass"), "value": values["db_pass"]},
+                {"name": "db_backend", "label": t("field_db_backend"), "value": values["db_backend"]},
+                {"name": "sqlite_path", "label": t("field_sqlite_path"), "value": values["sqlite_path"]},
                 {"name": "language", "label": t("field_language"), "value": values["language"]},
                 {"name": "color_theme", "label": t("field_theme"), "value": values["color_theme"]},
                 {"name": "color_theme_file", "label": t("field_theme_file"), "value": values["color_theme_file"]},
@@ -1949,6 +2108,8 @@ def settings_dialog(stdscr):
                     "db_name",
                     "db_user",
                     "db_pass",
+                    "db_backend",
+                    "sqlite_path",
                     "language",
                     "color_theme",
                     "color_theme_file",
@@ -1980,6 +2141,8 @@ def settings_dialog(stdscr):
                     "db_name",
                     "db_user",
                     "db_pass",
+                    "db_backend",
+                    "sqlite_path",
                     "language",
                     "color_theme",
                     "color_theme_file",
@@ -2006,6 +2169,13 @@ def settings_dialog(stdscr):
                     values["language"] = choice_dialog(stdscr, t("pick_language"), get_language_options(), values["language"])
                 elif active_field == "color_theme":
                     values["color_theme"] = choice_dialog(stdscr, t("pick_theme"), get_theme_options(), values["color_theme"])
+                elif active_field == "db_backend":
+                    values["db_backend"] = choice_dialog(
+                        stdscr,
+                        t("pick_db_backend"),
+                        get_db_backend_options(),
+                        values["db_backend"],
+                    )
                 elif active_field in {"picklist_printer", "delivery_note_printer"}:
                     values[active_field] = cups_printer_dialog(stdscr, values[active_field])
                 else:
@@ -2020,6 +2190,8 @@ def settings_dialog(stdscr):
         "db_name": res["db_name"].strip(),
         "db_user": res["db_user"].strip(),
         "db_pass": res["db_pass"],
+        "db_backend": res["db_backend"].strip().lower(),
+        "sqlite_path": os.path.expanduser(res["sqlite_path"].strip()),
         "language": res["language"].strip().lower(),
         "color_theme": res["color_theme"].strip().lower(),
         "color_theme_file": os.path.expanduser(res["color_theme_file"].strip()),
@@ -2042,17 +2214,23 @@ def settings_dialog(stdscr):
         "delivery_note_sender_email": res["delivery_note_sender_email"].strip(),
     }
 
-    missing = [
-        label for key, label in [
-            ("db_host", "DB Host"),
-            ("db_name", "DB Name"),
-            ("db_user", "DB User"),
-            ("printer_uri", "Drucker URI"),
-            ("printer_model", "Drucker Modell"),
-            ("label_size", "Labelformat"),
-        ]
-        if not updated[key]
+    required_fields = [
+        ("printer_uri", "Drucker URI"),
+        ("printer_model", "Drucker Modell"),
+        ("label_size", "Labelformat"),
     ]
+    if get_db_backend_name(updated) == "postgres":
+        required_fields.extend(
+            [
+                ("db_host", "DB Host"),
+                ("db_name", "DB Name"),
+                ("db_user", "DB User"),
+            ]
+        )
+    else:
+        required_fields.append(("sqlite_path", "SQLite Datei"))
+
+    missing = [label for key, label in required_fields if not updated[key]]
 
     if missing:
         message_box(stdscr, t("error"), f"Felder fehlen: {', '.join(missing)}")
@@ -2060,6 +2238,9 @@ def settings_dialog(stdscr):
 
     if updated["language"] not in SUPPORTED_LANGUAGES:
         message_box(stdscr, t("error"), "Sprache muss 'de' oder 'en' sein.")
+        return
+    if get_db_backend_name(updated) not in {"sqlite", "postgres"}:
+        message_box(stdscr, t("error"), "DB Backend muss sqlite oder postgres sein.")
         return
     if updated["color_theme_file"] and not os.path.isfile(updated["color_theme_file"]):
         message_box(stdscr, t("error"), t("theme_file_missing"))

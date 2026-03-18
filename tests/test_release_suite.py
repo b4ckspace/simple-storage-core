@@ -94,6 +94,8 @@ class AppSettingsTests(unittest.TestCase):
 
             self.assertEqual(loaded["db_host"], "localhost")
             self.assertEqual(loaded["db_name"], app_settings.DEFAULT_SETTINGS["db_name"])
+            self.assertEqual(loaded["db_backend"], app_settings.DEFAULT_SETTINGS["db_backend"])
+            self.assertEqual(loaded["sqlite_path"], app_settings.DEFAULT_SETTINGS["sqlite_path"])
             self.assertEqual(loaded["delivery_note_printer"], app_settings.DEFAULT_SETTINGS["delivery_note_printer"])
             self.assertEqual(loaded["pdf_output_dir"], app_settings.DEFAULT_SETTINGS["pdf_output_dir"])
             self.assertEqual(loaded["delivery_note_logo_source"], app_settings.DEFAULT_SETTINGS["delivery_note_logo_source"])
@@ -530,7 +532,8 @@ class LagerMcWorkflowTests(unittest.TestCase):
         connection = FakeConnection(cursor)
 
         with mock.patch.object(self.lager_mc, "db", return_value=connection):
-            self.lager_mc.apply_inventory_session(42)
+            with mock.patch.dict(self.lager_mc.SETTINGS, {"db_backend": "postgres"}, clear=False):
+                self.lager_mc.apply_inventory_session(42)
 
         self.assertTrue(connection.committed)
         self.assertTrue(connection.closed)
