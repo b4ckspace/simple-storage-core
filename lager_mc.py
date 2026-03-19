@@ -332,10 +332,7 @@ def get_active_theme_name():
 
 
 def is_core_mode():
-    raw = SETTINGS.get("core_mode", DEFAULT_SETTINGS.get("core_mode", False))
-    if isinstance(raw, bool):
-        return raw
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+    return True
 
 
 def get_theme_file_candidates():
@@ -1221,15 +1218,6 @@ def build_item_info_lines(item):
     lines.append(f"SKU: {item.get('sku') or '-'}")
     lines.append(f"Name: {item.get('name') or '-'}")
     lines.append(f"Barcode/GTIN: {item.get('barcode') or '-'}")
-    if not is_core_mode():
-        lines.append(f"Shopify Status: {item.get('shopify_product_status') or '-'}")
-        lines.append(f"VK Preis: {_format_eur(item.get('shopify_price'))}")
-        lines.append(f"VK Vergleich: {_format_eur(item.get('shopify_compare_at_price'))}")
-        lines.append(f"EK Kosten: {_format_eur(item.get('shopify_unit_cost'))}")
-
-    weight_grams = item.get("shopify_weight_grams")
-    if not is_core_mode():
-        lines.append(f"Gewicht: {weight_grams} g" if weight_grams is not None else "Gewicht: -")
     lines.append(f"Sync: {item.get('sync_status') or '-'}")
     lines.append(f"Lagerplatz: {(item.get('regal') or '-')}/{(item.get('fach') or '-')}/{(item.get('platz') or '-')}")
     return lines

@@ -298,30 +298,6 @@ class LagerMcLogicTests(unittest.TestCase):
         self.assertNotIn("EK Kosten: 6.20 EUR", lines)
         self.assertNotIn("Gewicht: 380 g", lines)
 
-    def test_build_item_info_lines_includes_shopify_fields_outside_core_mode(self):
-        item = {
-            "sku": "A-1",
-            "name": "Alpha",
-            "barcode": "4012345678901",
-            "shopify_product_status": "active",
-            "shopify_price": "12.95",
-            "shopify_compare_at_price": "14.95",
-            "shopify_unit_cost": "6.20",
-            "shopify_unit_cost_currency": "EUR",
-            "shopify_weight_grams": 380,
-            "sync_status": "ok",
-            "regal": "A",
-            "fach": "1",
-            "platz": "3",
-            "shopify_description": "Beschreibung",
-        }
-
-        with mock.patch.dict(self.lager_mc.SETTINGS, {"core_mode": False}, clear=False):
-            lines = self.lager_mc.build_item_info_lines(item)
-
-        self.assertIn("EK Kosten: 6.20 EUR", lines)
-        self.assertIn("Gewicht: 380 g", lines)
-
     def test_clean_shopify_description_strips_html(self):
         html_text = "<p>Text&nbsp;A</p><p>Text<br>B</p><ul><li>Punkt</li></ul>"
 

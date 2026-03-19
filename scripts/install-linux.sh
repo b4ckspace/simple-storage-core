@@ -143,7 +143,7 @@ Exec=${LAUNCHER}
 Icon=${ICON_TARGET}
 Terminal=true
 Categories=Office;Utility;
-Keywords=Lager;Inventar;Shopify;
+Keywords=Lager;Inventar;Storage;
 StartupNotify=true
 EOF
 
