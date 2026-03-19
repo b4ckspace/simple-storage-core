@@ -274,36 +274,22 @@ class LagerMcLogicTests(unittest.TestCase):
 
             self.assertTrue(path.startswith(tmpdir))
 
-    def test_build_item_info_lines_hides_shopify_fields_in_core_mode(self):
+    def test_build_item_info_lines_contains_core_fields(self):
         item = {
             "sku": "A-1",
             "name": "Alpha",
             "barcode": "4012345678901",
-            "shopify_product_status": "active",
-            "shopify_price": "12.95",
-            "shopify_compare_at_price": "14.95",
-            "shopify_unit_cost": "6.20",
-            "shopify_unit_cost_currency": "EUR",
-            "shopify_weight_grams": 380,
             "sync_status": "ok",
             "regal": "A",
             "fach": "1",
             "platz": "3",
-            "shopify_description": "Beschreibung",
         }
 
         lines = self.lager_mc.build_item_info_lines(item)
 
         self.assertIn("Barcode/GTIN: 4012345678901", lines)
-        self.assertNotIn("EK Kosten: 6.20 EUR", lines)
-        self.assertNotIn("Gewicht: 380 g", lines)
-
-    def test_clean_shopify_description_strips_html(self):
-        html_text = "<p>Text&nbsp;A</p><p>Text<br>B</p><ul><li>Punkt</li></ul>"
-
-        cleaned = self.lager_mc.clean_shopify_description(html_text)
-
-        self.assertEqual(cleaned, "Text A\nText\nB\nPunkt")
+        self.assertIn("Sync: ok", lines)
+        self.assertIn("Lagerplatz: A/1/3", lines)
 
     def test_create_delivery_note_pdf_splits_multiple_pages(self):
         import delivery_note

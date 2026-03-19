@@ -477,13 +477,6 @@ def init_db():
     cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS unavailable integer DEFAULT 0")
     cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS external_fulfillment boolean NOT NULL DEFAULT FALSE")
     cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS barcode text")
-    cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS shopify_product_status text")
-    cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS shopify_description text")
-    cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS shopify_price text")
-    cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS shopify_compare_at_price text")
-    cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS shopify_unit_cost text")
-    cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS shopify_unit_cost_currency text")
-    cur.execute("ALTER TABLE items ADD COLUMN IF NOT EXISTS shopify_weight_grams integer")
     cur.execute("UPDATE items SET reserved = COALESCE(reserved, 0)")
     cur.execute("UPDATE items SET committed = COALESCE(committed, 0)")
     cur.execute(
@@ -500,43 +493,6 @@ def init_db():
             0
         )
         WHERE available IS NULL
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS shopify_orders (
-            order_id text PRIMARY KEY,
-            order_name text NOT NULL,
-            created_at timestamptz,
-            shipping_name text,
-            shipping_address1 text,
-            shipping_zip text,
-            shipping_city text,
-            shipping_country text,
-            fulfillment_status text,
-            payment_status text,
-            updated_at timestamptz NOT NULL DEFAULT NOW()
-        )
-        """
-    )
-    cur.execute("ALTER TABLE shopify_orders ADD COLUMN IF NOT EXISTS shipping_country text")
-    cur.execute("ALTER TABLE shopify_orders ADD COLUMN IF NOT EXISTS payment_status text")
-    cur.execute(
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_shopify_orders_name
-        ON shopify_orders(order_name)
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS shopify_order_items (
-            order_id text NOT NULL,
-            line_index integer NOT NULL,
-            sku text,
-            title text NOT NULL,
-            quantity integer NOT NULL,
-            PRIMARY KEY (order_id, line_index)
-        )
         """
     )
     cur.execute(
@@ -587,47 +543,10 @@ def init_db_sqlite():
             committed INTEGER NOT NULL DEFAULT 0,
             unavailable INTEGER NOT NULL DEFAULT 0,
             dirty INTEGER NOT NULL DEFAULT 0,
-            shopify_variant_id TEXT,
             barcode TEXT,
-            shopify_product_status TEXT,
-            shopify_description TEXT,
-            shopify_price TEXT,
-            shopify_compare_at_price TEXT,
-            shopify_unit_cost TEXT,
-            shopify_unit_cost_currency TEXT,
-            shopify_weight_grams INTEGER,
             sync_status TEXT NOT NULL DEFAULT 'local',
             external_fulfillment INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS shopify_orders (
-            order_id TEXT PRIMARY KEY,
-            order_name TEXT NOT NULL,
-            created_at TEXT,
-            shipping_name TEXT,
-            shipping_address1 TEXT,
-            shipping_zip TEXT,
-            shipping_city TEXT,
-            shipping_country TEXT,
-            fulfillment_status TEXT,
-            payment_status TEXT,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS shopify_order_items (
-            order_id TEXT NOT NULL,
-            line_index INTEGER NOT NULL,
-            sku TEXT,
-            title TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            PRIMARY KEY (order_id, line_index)
         )
         """
     )
@@ -768,15 +687,7 @@ def get_items(filter_text=None, filter_no_location=False, filter_local=False, so
             )
         ) AS available,
         dirty,
-        shopify_variant_id,
         barcode,
-        shopify_product_status,
-        shopify_description,
-        shopify_price,
-        shopify_compare_at_price,
-        shopify_unit_cost,
-        shopify_unit_cost_currency,
-        shopify_weight_grams,
         sync_status,
         COALESCE(external_fulfillment, FALSE) AS external_fulfillment
     FROM items
@@ -785,74 +696,6 @@ def get_items(filter_text=None, filter_no_location=False, filter_local=False, so
     """
 
     cur.execute(query, params)
-    rows = cur.fetchall()
-    cur.close()
-    con.close()
-    return rows
-
-
-def get_orders(order_filter=None):
-    con = db()
-    cur = con.cursor()
-
-    where = ""
-    params = []
-
-    if order_filter:
-        where = """
-        WHERE REPLACE(order_name, '#', '') ILIKE %s
-           OR COALESCE(shipping_name, '') ILIKE %s
-           OR COALESCE(shipping_city, '') ILIKE %s
-        """
-        match = f"%{order_filter.replace('#', '')}%"
-        params = [match, f"%{order_filter}%", f"%{order_filter}%"]
-
-    cur.execute(
-        f"""
-        SELECT
-            order_id,
-            order_name,
-            created_at,
-            shipping_name,
-            shipping_address1,
-            shipping_zip,
-            shipping_city,
-            shipping_country,
-            fulfillment_status,
-            payment_status
-        FROM shopify_orders
-        {where}
-        ORDER BY created_at DESC NULLS LAST, order_name DESC
-        """,
-        params,
-    )
-    rows = cur.fetchall()
-    cur.close()
-    con.close()
-    return rows
-
-
-def get_order_items(order_id):
-    con = db()
-    cur = con.cursor()
-    cur.execute(
-        """
-        SELECT
-            oi.line_index,
-            oi.sku,
-            oi.title,
-            oi.quantity,
-            i.regal,
-            i.fach,
-            i.platz,
-            COALESCE(i.external_fulfillment, FALSE) AS external_fulfillment
-        FROM shopify_order_items oi
-        LEFT JOIN items i ON i.sku = oi.sku
-        WHERE oi.order_id = %s
-        ORDER BY oi.line_index
-        """,
-        (order_id,),
-    )
     rows = cur.fetchall()
     cur.close()
     con.close()
@@ -1197,22 +1040,6 @@ def _format_eur(value):
     return f"{text} EUR"
 
 
-def clean_shopify_description(value):
-    text = value or ""
-    text = re.sub(r"(?i)<\s*br\s*/?\s*>", "\n", text)
-    text = re.sub(r"(?i)</\s*p\s*>", "\n", text)
-    text = re.sub(r"(?i)<\s*p[^>]*>", "", text)
-    text = re.sub(r"(?i)<\s*/?\s*li\s*>", "\n", text)
-    text = re.sub(r"(?i)<\s*/?\s*ul\s*>", "\n", text)
-    text = re.sub(r"(?i)<\s*/?\s*ol\s*>", "\n", text)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = html.unescape(text)
-    text = text.replace("\xa0", " ")
-    lines = [line.strip() for line in text.splitlines()]
-    cleaned = "\n".join(line for line in lines if line)
-    return cleaned or "-"
-
-
 def build_item_info_lines(item):
     lines = []
     lines.append(f"SKU: {item.get('sku') or '-'}")
@@ -1231,9 +1058,6 @@ def item_info_dialog(stdscr, item):
     x = max(2, (w - width) // 2)
 
     info_lines = build_item_info_lines(item)
-    description_lines = clean_shopify_description(item.get("shopify_description")).splitlines()
-    description_top = 0
-
     while True:
         draw_shadow(stdscr, y, x, height, width)
         win = curses.newwin(height, width, y, x)
@@ -1249,24 +1073,8 @@ def item_info_dialog(stdscr, item):
                 break
             win.addstr(y_line, 2, line[: width - 4])
 
-        desc_y = min(height - 5, 2 + len(info_lines))
-        desc_height = max(4, height - desc_y - 2)
-        desc_width = width - 4
-        desc_win = win.derwin(desc_height, desc_width, desc_y, 2)
-        desc_win.box()
-        desc_win.addstr(0, 2, " Beschreibung ")
-
-        wrapped_description = []
-        for line in description_lines:
-            wrapped_description.extend(textwrap.wrap(line, width=max(10, desc_width - 4)) or [""])
-
-        visible_desc_rows = max(1, desc_height - 2)
-        visible_desc = wrapped_description[description_top : description_top + visible_desc_rows]
-        for index, line in enumerate(visible_desc):
-            desc_win.addstr(1 + index, 2, line[: desc_width - 4])
-
         win.attrset(curses.color_pair(3))
-        footer = " PgUp/PgDn oder Pfeile scrollen  F9/Esc schliessen "
+        footer = " Enter/F9/Esc schliessen "
         win.addstr(height - 1, 1, " " * (width - 2))
         win.addstr(height - 1, 1, footer[: width - 2])
         win.refresh()
@@ -1274,14 +1082,6 @@ def item_info_dialog(stdscr, item):
         key = win.get_wch()
         if key in (27, curses.KEY_F9, curses.KEY_ENTER, "\n", "\r"):
             return
-        if key == curses.KEY_NPAGE:
-            description_top = min(max(0, len(wrapped_description) - visible_desc_rows), description_top + visible_desc_rows)
-        elif key == curses.KEY_PPAGE:
-            description_top = max(0, description_top - visible_desc_rows)
-        elif key == curses.KEY_DOWN:
-            description_top = min(max(0, len(wrapped_description) - visible_desc_rows), description_top + 1)
-        elif key == curses.KEY_UP:
-            description_top = max(0, description_top - 1)
 
 
 def build_location_rows(items):
