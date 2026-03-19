@@ -82,6 +82,7 @@ class SQLiteCursorWrapper:
 def _normalize_sql_for_sqlite(query):
     sql = str(query)
     sql = sql.replace("%s", "?")
+    sql = re.sub(r"\bGREATEST\s*\(", "MAX(", sql, flags=re.IGNORECASE)
     sql = re.sub(r"\bILIKE\b", "LIKE", sql, flags=re.IGNORECASE)
     sql = re.sub(r"\bNOW\(\)", "CURRENT_TIMESTAMP", sql, flags=re.IGNORECASE)
     sql = re.sub(r"\s+NULLS\s+LAST", "", sql, flags=re.IGNORECASE)

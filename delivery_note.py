@@ -10,16 +10,13 @@ import urllib.request
 import zlib
 from pathlib import Path
 
-try:
-    from weasyprint import HTML
-except Exception:  # pragma: no cover - optional dependency
-    HTML = None
+HTML = None
 
 
 MAX_DELIVERY_NOTE_ITEMS = 10
 MEDIA_BOX = "[0.000 0.000 595.280 841.890]"
 LOCAL_TEMPLATE_PATH = Path(__file__).resolve().parent / "local_only" / "delivery_note_template.pdf"
-WEASYPRINT_AVAILABLE = HTML is not None
+WEASYPRINT_AVAILABLE = None
 
 DEFAULT_SENDER = {
     "name": "Firmenname",
@@ -62,7 +59,7 @@ def build_delivery_note_pdf(template_path, output_path, order, order_items, send
 
 
 def _should_use_html_renderer(template_path):
-    if not WEASYPRINT_AVAILABLE:
+    if not _is_weasyprint_available():
         return False
     if not template_path:
         return True
@@ -98,7 +95,32 @@ def _build_delivery_note_pdf_html(template_path, output_path, order, rows, sende
         address_html="".join(f"<div>{escape(line)}</div>" for line in format_delivery_address_lines(order)),
         items_html=items_html,
     )
-    HTML(string=rendered, base_url=str(Path(__file__).resolve().parent)).write_pdf(output_path)
+    html_cls = _get_weasyprint_html()
+    html_cls(string=rendered, base_url=str(Path(__file__).resolve().parent)).write_pdf(output_path)
+
+
+def _is_weasyprint_available():
+    global WEASYPRINT_AVAILABLE
+    if WEASYPRINT_AVAILABLE is True:
+        return True
+    if WEASYPRINT_AVAILABLE is False:
+        return False
+    return _get_weasyprint_html() is not None
+
+
+def _get_weasyprint_html():
+    global HTML, WEASYPRINT_AVAILABLE
+    if HTML is not None:
+        WEASYPRINT_AVAILABLE = True
+        return HTML
+    try:
+        from weasyprint import HTML as imported_html
+    except Exception:  # pragma: no cover - optional dependency
+        WEASYPRINT_AVAILABLE = False
+        return None
+    HTML = imported_html
+    WEASYPRINT_AVAILABLE = True
+    return HTML
 
 
 def _build_order_rows_html(rows):
