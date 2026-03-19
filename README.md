@@ -14,12 +14,6 @@ License: [MIT](LICENSE)
 - Local-first operation with SQLite by default
 - Optional PostgreSQL backend
 
-## Not in Scope
-
-- Shopify sync
-- Order view
-- Picklist and delivery-note workflows
-
 ## Project Files
 
 - [lager_mc.py](lager_mc.py): main TUI app
